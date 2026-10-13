@@ -1,0 +1,20 @@
+# Gradle / Android build output
+.gradle/
+build/
+app/build/
+local.properties
+*.apk
+
+# Signing keys
+debug.keystore
+*.keystore
+*.jks
+
+# IDE / OS
+.idea/
+*.iml
+.DS_Store
+
+# Agent notes (contain local network and device details)
+AGENTS.md
+CLAUDE.md
