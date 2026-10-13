@@ -64,10 +64,18 @@ class WatchService : NotificationListenerService() {
 
     override fun onNotificationPosted(sbn: StatusBarNotification) {
         val label = WATCHED[sbn.packageName] ?: return
-        if (pending) return
-        // Cooldown: stay quiet for a while after the last ring stopped (e.g. mid-conversation).
-        if (lastRingEnded != 0L && SystemClock.elapsedRealtime() - lastRingEnded < cooldownMs(this)) return
+        // Quiet period: ring only if no watched notification arrived in the last X minutes.
+        // Every watched notification (even while ringing or quiet) restarts the period, so a
+        // busy conversation stays silent until it pauses for X minutes.
+        val now = SystemClock.elapsedRealtime()
+        val quiet = lastWatchedPosted == 0L || now - lastWatchedPosted >= cooldownMs(this)
+        lastWatchedPosted = now
+        if (pending || !quiet) return
 
+        startPing(label)
+    }
+
+    private fun startPing(label: String) {
         pending = true
         source = label
         postStatusNotification()
@@ -110,7 +118,8 @@ class WatchService : NotificationListenerService() {
             .setContentText("You have a $source notification waiting.")
             .setCategory(NotificationCompat.CATEGORY_ALARM)
             .setPriority(NotificationCompat.PRIORITY_MAX)
-            .setOngoing(true) // swipeable on Android 14+, so the delete intent also acknowledges
+            // Not ongoing: Pebble phone apps skip ongoing notifications, and Android 14+ lets users
+            // swipe them anyway. Swiping (on phone or watch) fires the delete intent, which acknowledges.
             .setContentIntent(openApp)
             .setDeleteIntent(ackIntent)
             .addAction(0, "Acknowledge", ackIntent)
@@ -238,14 +247,14 @@ class WatchService : NotificationListenerService() {
         const val KEY_COOLDOWN_MIN = "cooldown_min"
         const val DEFAULT_COOLDOWN_MIN = 2f
 
-        /** Minutes (fractions allowed) after a ring stops during which new notifications don't ring. */
+        /** Minutes (fractions allowed) of silence needed before a new notification rings. */
         fun cooldownMinutes(context: Context): Float =
             context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getFloat(KEY_COOLDOWN_MIN, DEFAULT_COOLDOWN_MIN)
 
         private fun cooldownMs(context: Context): Long = (cooldownMinutes(context) * 60_000).toLong()
 
-        /** elapsedRealtime() when the last ring stopped; 0 if it never rang. */
-        @Volatile private var lastRingEnded = 0L
+        /** elapsedRealtime() when the last watched notification arrived; 0 if none yet. */
+        @Volatile private var lastWatchedPosted = 0L
 
         /** The user-picked ringtone, if any; null means ring with the synthesized default ping. */
         fun savedRingtoneUri(context: Context): Uri? {
@@ -276,9 +285,18 @@ class WatchService : NotificationListenerService() {
 
         @Volatile private var instance: WatchService? = null
 
+        /**
+         * Starts a ping as if a watched notification arrived, ignoring the cooldown.
+         * Returns false if the listener isn't connected (notification access not granted).
+         */
+        fun test(): Boolean {
+            val service = instance ?: return false
+            if (!pending) service.startPing("Test")
+            return true
+        }
+
         /** Stops the ring. Safe to call when nothing is pending. */
         fun acknowledge() {
-            if (pending) lastRingEnded = SystemClock.elapsedRealtime()
             pending = false
             instance?.stopPinging()
         }

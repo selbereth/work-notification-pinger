@@ -22,16 +22,28 @@ Needs Android Studio (it bundles the JDK and SDK).
 3. Turn off battery optimization for the app (Settings > Apps > Notification
    Pinger > Battery > Unrestricted). Some phones kill the listener otherwise.
 
+## Pebble
+
+No watch app needed. The ping is a normal notification with an **Acknowledge**
+action, so the Pebble phone app can mirror it to the watch:
+
+1. In the Pebble phone app, enable notification access and turn on mirroring for
+   **Notification Pinger** (it may be off by default for new apps).
+2. Make sure the Pebble app is not set to skip notifications while the phone
+   screen is on.
+3. When the ping arrives, the watch buzzes. Open it and pick **Acknowledge**
+   (or dismiss it) to stop the ring on the phone.
+
 ## Behavior
 
 - A notification from Slack (`com.Slack`) or Teams (`com.microsoft.teams`)
   starts the ping.
 - The ping respects Do Not Disturb. While DND is on, it stays silent (it still
   shows in the shade). There is no call exception.
-- It rings as soon as the notification arrives. After a ring stops
-  (acknowledged, swiped, or timed out), new notifications stay silent for a
-  configurable number of minutes (set in the app, default 2, decimals like
-  0.5 allowed). This keeps it from ringing on every message in a conversation.
+- It rings as soon as a notification arrives, if none arrived in the previous
+  X minutes (set in the app, default 2, decimals like 0.5 allowed). Every new
+  notification restarts that wait, so a busy conversation stays silent and the
+  next ring comes only after X minutes without any notification.
 - It rings continuously until you tap **Acknowledge**, swipe the ping or the
   Slack/Teams notification away, or 10 minutes pass (`RING_TIMEOUT_MS`).
 - Further Slack/Teams notifications while pinging do not add extra pings.

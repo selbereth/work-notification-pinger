@@ -3,12 +3,15 @@ package local.pinger
 import android.Manifest
 import android.app.Activity
 import android.content.Intent
+import android.content.res.Configuration
 import android.media.RingtoneManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
 import android.text.InputType
+import android.view.Menu
+import android.view.MenuItem
 import android.view.ViewGroup
 import android.view.inputmethod.EditorInfo
 import android.widget.Button
@@ -22,7 +25,24 @@ class MainActivity : Activity() {
     private lateinit var status: TextView
     private lateinit var ringtoneLabel: TextView
 
+    /** Saved theme choice: "dark", "light", or null to follow the system (the default). */
+    private fun themeChoice(): String? = getSharedPreferences(WatchService.PREFS, MODE_PRIVATE).getString(KEY_THEME, null)
+
+    private fun isDark(): Boolean = when (themeChoice()) {
+        "dark" -> true
+        "light" -> false
+        else -> resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK == Configuration.UI_MODE_NIGHT_YES
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
+        setTheme(
+            when (themeChoice()) {
+                "dark" -> android.R.style.Theme_DeviceDefault
+                "light" -> android.R.style.Theme_DeviceDefault_Light
+                else -> if (Build.VERSION.SDK_INT >= 29) android.R.style.Theme_DeviceDefault_DayNight
+                else android.R.style.Theme_DeviceDefault
+            }
+        )
         super.onCreate(savedInstanceState)
         val pad = (16 * resources.displayMetrics.density).toInt()
 
@@ -41,7 +61,7 @@ class MainActivity : Activity() {
         }
         val cooldownLabel = TextView(this).apply {
             textSize = 14f
-            text = "Quiet minutes after a ring stops (e.g. 0.5, 2, 4.5). New notifications in that window don't ring:"
+            text = "Quiet minutes needed before a notification rings (e.g. 0.5, 2, 4.5). Each new notification restarts the wait:"
         }
         val cooldownInput = EditText(this).apply {
             inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_DECIMAL
@@ -52,6 +72,15 @@ class MainActivity : Activity() {
                 false // let the keyboard close as usual
             }
             setOnFocusChangeListener { view, hasFocus -> if (!hasFocus) saveCooldown(view as EditText) }
+        }
+        val test = Button(this).apply {
+            text = "Test ping"
+            setOnClickListener {
+                if (!WatchService.test()) {
+                    Toast.makeText(this@MainActivity, "Grant notification access first", Toast.LENGTH_SHORT).show()
+                }
+                refresh()
+            }
         }
         val ack = Button(this).apply {
             text = "Acknowledge (stop pinging)"
@@ -71,6 +100,7 @@ class MainActivity : Activity() {
                 addView(ringtoneLabel, ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
                 addView(cooldownLabel, ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
                 addView(cooldownInput, ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+                addView(test)
                 addView(ack)
             }
         )
@@ -78,6 +108,21 @@ class MainActivity : Activity() {
         if (Build.VERSION.SDK_INT >= 33) {
             requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), 1)
         }
+    }
+
+    override fun onCreateOptionsMenu(menu: Menu): Boolean {
+        menu.add(Menu.NONE, MENU_THEME, Menu.NONE, if (isDark()) "Light" else "Dark")
+            .setShowAsAction(MenuItem.SHOW_AS_ACTION_ALWAYS)
+        return true
+    }
+
+    override fun onOptionsItemSelected(item: MenuItem): Boolean {
+        if (item.itemId != MENU_THEME) return super.onOptionsItemSelected(item)
+        getSharedPreferences(WatchService.PREFS, MODE_PRIVATE).edit()
+            .putString(KEY_THEME, if (isDark()) "light" else "dark")
+            .apply()
+        recreate()
+        return true
     }
 
     override fun onResume() {
@@ -138,5 +183,7 @@ class MainActivity : Activity() {
 
     companion object {
         private const val REQUEST_RINGTONE = 1
+        private const val MENU_THEME = 1
+        private const val KEY_THEME = "theme"
     }
 }
