@@ -73,6 +73,20 @@ class MainActivity : Activity() {
             }
             setOnFocusChangeListener { view, hasFocus -> if (!hasFocus) saveCooldown(view as EditText) }
         }
+        val warmupLabel = TextView(this).apply {
+            textSize = 14f
+            text = "Warmup seconds: a notification must stay unread this long before it rings (0 = ring at once):"
+        }
+        val warmupInput = EditText(this).apply {
+            inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_DECIMAL
+            imeOptions = EditorInfo.IME_ACTION_DONE
+            setText(formatMinutes(WatchService.warmupSeconds(this@MainActivity)))
+            setOnEditorActionListener { view, actionId, _ ->
+                if (actionId == EditorInfo.IME_ACTION_DONE) saveWarmup(view as EditText)
+                false
+            }
+            setOnFocusChangeListener { view, hasFocus -> if (!hasFocus) saveWarmup(view as EditText) }
+        }
         val test = Button(this).apply {
             text = "Test ping"
             setOnClickListener {
@@ -100,6 +114,8 @@ class MainActivity : Activity() {
                 addView(ringtoneLabel, ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
                 addView(cooldownLabel, ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
                 addView(cooldownInput, ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+                addView(warmupLabel, ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+                addView(warmupInput, ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
                 addView(test)
                 addView(ack)
             }
@@ -177,6 +193,20 @@ class MainActivity : Activity() {
             .putFloat(WatchService.KEY_COOLDOWN_MIN, minutes)
             .apply()
         Toast.makeText(this, "Updated: ${formatMinutes(minutes)} min", Toast.LENGTH_SHORT).show()
+    }
+
+    /** Saves the typed warmup (seconds) and confirms with a toast; ignores invalid or unchanged values. */
+    private fun saveWarmup(input: EditText) {
+        val seconds = input.text.toString().toFloatOrNull()?.takeIf { it >= 0f }
+        if (seconds == null) {
+            input.error = "Enter seconds, e.g. 5"
+            return
+        }
+        if (seconds == WatchService.warmupSeconds(this)) return
+        getSharedPreferences(WatchService.PREFS, MODE_PRIVATE).edit()
+            .putFloat(WatchService.KEY_WARMUP_SEC, seconds)
+            .apply()
+        Toast.makeText(this, "Updated: ${formatMinutes(seconds)} s", Toast.LENGTH_SHORT).show()
     }
 
     private fun formatMinutes(minutes: Float): String = minutes.toString().removeSuffix(".0")

@@ -38,6 +38,8 @@ class WatchService : NotificationListenerService() {
     @Volatile private var toneRunning = false
 
     private val timeout = Runnable { acknowledge() }
+    private val warmupDone = Runnable { startPing(warmupSource) }
+    private var warmupSource = ""
 
     private val ackReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
@@ -70,12 +72,17 @@ class WatchService : NotificationListenerService() {
         val now = SystemClock.elapsedRealtime()
         val quiet = lastWatchedPosted == 0L || now - lastWatchedPosted >= cooldownMs(this)
         lastWatchedPosted = now
-        if (pending || !quiet) return
+        if (pending || warmingUp || !quiet) return
 
-        startPing(label)
+        // Warmup: wait a few seconds so a notification you read right away never rings.
+        // onNotificationRemoved cancels it if the notification is cleared in the meantime.
+        warmupSource = label
+        warmingUp = true
+        handler.postDelayed(warmupDone, warmupMs(this))
     }
 
     private fun startPing(label: String) {
+        warmingUp = false
         pending = true
         source = label
         postStatusNotification()
@@ -84,7 +91,7 @@ class WatchService : NotificationListenerService() {
     }
 
     override fun onNotificationRemoved(sbn: StatusBarNotification, rankingMap: RankingMap, reason: Int) {
-        if (!pending) return
+        if (!pending && !warmingUp) return
         // Our own ping notification swiped away (Android 14+ lets users dismiss ongoing ones).
         if (sbn.packageName == packageName && sbn.id == PING_ID) {
             acknowledge()
@@ -232,6 +239,8 @@ class WatchService : NotificationListenerService() {
     }
 
     private fun stopPinging() {
+        handler.removeCallbacks(warmupDone)
+        warmingUp = false
         handler.removeCallbacks(timeout)
         stopRinging()
         getSystemService(NotificationManager::class.java).cancel(PING_ID)
@@ -246,6 +255,14 @@ class WatchService : NotificationListenerService() {
         const val KEY_RINGTONE_URI = "ringtone_uri"
         const val KEY_COOLDOWN_MIN = "cooldown_min"
         const val DEFAULT_COOLDOWN_MIN = 2f
+        const val KEY_WARMUP_SEC = "warmup_sec"
+        const val DEFAULT_WARMUP_SEC = 5f
+
+        /** Seconds (fractions allowed) a notification must stay unread before it starts ringing. */
+        fun warmupSeconds(context: Context): Float =
+            context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getFloat(KEY_WARMUP_SEC, DEFAULT_WARMUP_SEC)
+
+        private fun warmupMs(context: Context): Long = (warmupSeconds(context) * 1000).toLong()
 
         /** Minutes (fractions allowed) of silence needed before a new notification rings. */
         fun cooldownMinutes(context: Context): Float =
@@ -280,6 +297,8 @@ class WatchService : NotificationListenerService() {
 
         @Volatile var pending = false
             private set
+        /** True between a quiet-period notification arriving and the warmup deciding to ring. */
+        @Volatile private var warmingUp = false
         @Volatile var source = ""
             private set
 
