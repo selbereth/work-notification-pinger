@@ -55,6 +55,7 @@ All in `app/src/main/java/local/pinger/WatchService.kt`:
 - `WATCHED`: package names. If Teams or Slack notifications are not caught,
   check the real package name on the phone (a notification-logger app shows it,
   or `adb shell dumpsys notification`).
+- `debug.keystore` is created automatically on the first build if missing (gitignored). Release keys are not kept in this repo.
 - `RING_TIMEOUT_MS`: auto-stop after this long. The quiet period (`DEFAULT_COOLDOWN_MIN` = 2) and the warmup in seconds (`DEFAULT_WARMUP_SEC` = 5) are set in the app.
 
 ## Status
